@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Never run scripts in python env. The env is running on remote air-gapped supercomputer.

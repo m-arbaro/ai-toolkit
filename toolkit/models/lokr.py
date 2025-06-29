@@ -304,6 +304,7 @@ class LokrModule(ToolkitModuleMixin, nn.Module):
             x = x.dequantize()
 
         orig_dtype = x.dtype
+        target_device = x.device
 
         orig_weight = self.get_orig_weight()
         lokr_weight = self.get_weight(orig_weight).to(dtype=orig_weight.dtype)
@@ -319,9 +320,17 @@ class LokrModule(ToolkitModuleMixin, nn.Module):
             orig_weight
             + lokr_weight * multiplier
         )
+        
+        # Ensure weight is on the same device as input
+        if weight.device != target_device:
+            weight = weight.to(target_device)
+            
         bias = self.get_orig_bias()
         if bias is not None:
-            bias = bias.to(weight.device, dtype=weight.dtype)
+            # Ensure bias is on the same device as input
+            if bias.device != target_device:
+                bias = bias.to(target_device)
+            bias = bias.to(dtype=weight.dtype)
         output = self.op(
             x,
             weight.view(self.shape),

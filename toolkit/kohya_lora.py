@@ -91,6 +91,13 @@ class LoRAModule(torch.nn.Module):
             if torch.rand(1) < self.module_dropout:
                 return org_forwarded
 
+        # Ensure LoRA weights are on the same device as input
+        target_device = x.device
+        if self.lora_down.weight.device != target_device:
+            self.lora_down = self.lora_down.to(target_device)
+        if self.lora_up.weight.device != target_device:
+            self.lora_up = self.lora_up.to(target_device)
+
         lx = self.lora_down(x)
 
         # normal dropout
@@ -114,7 +121,16 @@ class LoRAModule(torch.nn.Module):
 
         lx = self.lora_up(lx)
 
-        return org_forwarded + lx * self.multiplier * scale
+        # Ensure multiplier and scale are on the same device as lx
+        multiplier = self.multiplier
+        if isinstance(multiplier, torch.Tensor) and multiplier.device != lx.device:
+            multiplier = multiplier.to(lx.device)
+        
+        scale = self.scale
+        if isinstance(scale, torch.Tensor) and scale.device != lx.device:
+            scale = scale.to(lx.device)
+
+        return org_forwarded + lx * multiplier * scale
 
 
 class LoRAInfModule(LoRAModule):
@@ -219,7 +235,25 @@ class LoRAInfModule(LoRAModule):
 
     def default_forward(self, x):
         # print("default_forward", self.lora_name, x.size())
-        return self.org_forward(x) + self.lora_up(self.lora_down(x)) * self.multiplier * self.scale
+        # Ensure LoRA weights are on the same device as input
+        target_device = x.device
+        if self.lora_down.weight.device != target_device:
+            self.lora_down = self.lora_down.to(target_device)
+        if self.lora_up.weight.device != target_device:
+            self.lora_up = self.lora_up.to(target_device)
+        
+        lx = self.lora_up(self.lora_down(x))
+        
+        # Ensure multiplier and scale are on the same device as lx
+        multiplier = self.multiplier
+        if isinstance(multiplier, torch.Tensor) and multiplier.device != lx.device:
+            multiplier = multiplier.to(lx.device)
+        
+        scale = self.scale
+        if isinstance(scale, torch.Tensor) and scale.device != lx.device:
+            scale = scale.to(lx.device)
+            
+        return self.org_forward(x) + lx * multiplier * scale
 
     def forward(self, x):
         if not self.enabled:
@@ -257,8 +291,26 @@ class LoRAInfModule(LoRAModule):
         if self.network.mask_dic is None:  # sub_prompt_index >= 3
             return self.default_forward(x)
 
+        # Ensure LoRA weights are on the same device as input
+        target_device = x.device
+        if self.lora_down.weight.device != target_device:
+            self.lora_down = self.lora_down.to(target_device)
+        if self.lora_up.weight.device != target_device:
+            self.lora_up = self.lora_up.to(target_device)
+
         # apply mask for LoRA result
-        lx = self.lora_up(self.lora_down(x)) * self.multiplier * self.scale
+        lx = self.lora_up(self.lora_down(x))
+        
+        # Ensure multiplier and scale are on the same device as lx
+        multiplier = self.multiplier
+        if isinstance(multiplier, torch.Tensor) and multiplier.device != lx.device:
+            multiplier = multiplier.to(lx.device)
+        
+        scale = self.scale
+        if isinstance(scale, torch.Tensor) and scale.device != lx.device:
+            scale = scale.to(lx.device)
+            
+        lx = lx * multiplier * scale
         mask = self.get_mask_for_x(lx)
         # print("regional", self.lora_name, self.network.sub_prompt_index, lx.size(), mask.size())
         lx = lx * mask

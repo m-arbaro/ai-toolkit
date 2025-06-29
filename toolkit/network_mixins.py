@@ -175,7 +175,17 @@ class ToolkitModuleMixin:
             if torch.rand(1) < self.module_dropout:
                 return 0.0  # added to original forward
 
+        # Ensure LoRA weights are on the same device as input
+        target_device = x.device
+        if self.lora_down.weight.device != target_device:
+            self.lora_down = self.lora_down.to(target_device)
+        if self.lora_up.weight.device != target_device:
+            self.lora_up = self.lora_up.to(target_device)
+
         if hasattr(self, 'lora_mid') and self.lora_mid is not None:
+            # Check if lora_mid is a module with weights
+            if hasattr(self.lora_mid, 'weight') and self.lora_mid.weight.device != target_device:
+                self.lora_mid = self.lora_mid.to(target_device)
             lx = self.lora_mid(self.lora_down(x))
         else:
             try:
@@ -209,6 +219,9 @@ class ToolkitModuleMixin:
 
         # handle trainable scaler method locon does
         if hasattr(self, 'scalar'):
+            # Ensure scalar is on the same device as input
+            if isinstance(self.scalar, torch.Tensor) and self.scalar.device != target_device:
+                self.scalar = self.scalar.to(target_device)
             scale = scale * self.scalar
 
         return lx * scale
@@ -219,6 +232,13 @@ class ToolkitModuleMixin:
             return self.org_forward(x, *args, **kwargs)
         
         orig_dtype = x.dtype
+        
+        # Ensure LoRA weights are on the same device as input
+        target_device = x.device
+        if self.lora_down.weight.device != target_device:
+            self.lora_down = self.lora_down.to(target_device)
+        if self.lora_up.weight.device != target_device:
+            self.lora_up = self.lora_up.to(target_device)
         
         if x.dtype != self.lora_down.weight.dtype:
             x = x.to(self.lora_down.weight.dtype)
@@ -245,6 +265,7 @@ class ToolkitModuleMixin:
             x = self.lora_up(self.lora_down(x))
             if x.dtype != orig_dtype:
                 x = x.to(orig_dtype)
+            return x
 
     def forward(self: Module, x, *args, **kwargs):
         skip = False
@@ -284,6 +305,10 @@ class ToolkitModuleMixin:
         lora_input = x.to(self.lora_down.weight.dtype)
         lora_output = self._call_forward(lora_input)
         multiplier = self.network_ref().torch_multiplier
+
+        # Ensure multiplier is on the same device as lora_output
+        if multiplier.device != lora_output.device:
+            multiplier = multiplier.to(lora_output.device)
 
         lora_output_batch_size = lora_output.size(0)
         multiplier_batch_size = multiplier.size(0)
