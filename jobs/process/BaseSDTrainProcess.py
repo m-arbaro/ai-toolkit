@@ -2088,6 +2088,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
             if not did_first_flush:
                 flush()
                 did_first_flush = True
+            # Additional memory cleanup after training loop
+            torch.cuda.empty_cache()
+            gc.collect()
             # flush()
             # setup the networks to gradient checkpointing and everything works
             if self.adapter is not None and isinstance(self.adapter, ReferenceAdapter):
@@ -2216,6 +2219,10 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 self.step_num = step + 1
                 self.grad_accumulation_step += 1
                 self.end_step_hook()
+                
+                # Clean up memory at the end of each step
+                torch.cuda.empty_cache()
+                gc.collect()
 
 
         ###################################################################

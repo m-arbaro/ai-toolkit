@@ -735,8 +735,8 @@ class SDTrainer(BaseSDTrainProcess):
     
     
     # ------------------------------------------------------------------
-    #  Mean-Flow loss (Geng et al., “Mean Flows for One-step Generative
-    #  Modelling”, 2025 – see Alg. 1 + Eq. (6) of the paper)
+    #  Mean-Flow loss (Geng et al., "Mean Flows for One-step Generative
+    #  Modelling", 2025 – see Alg. 1 + Eq. (6) of the paper)
     # This version avoids jvp / double-back-prop issues with Flash-Attention
     # adapted from the work of lodestonerock
     # ------------------------------------------------------------------
@@ -986,7 +986,20 @@ class SDTrainer(BaseSDTrainProcess):
         pass
 
     def end_of_training_loop(self):
-        pass
+        # Clean up memory to prevent leaks
+        torch.cuda.empty_cache()
+        gc.collect()
+        
+        # Clean up any LoRA weights that might be scattered across devices
+        if hasattr(self, 'network') and self.network is not None:
+            # Move LoRA weights to CPU to free GPU memory
+            for module in self.network.modules():
+                if hasattr(module, 'lora_down') and hasattr(module.lora_down, 'weight'):
+                    if module.lora_down.weight.device.type == 'cuda':
+                        module.lora_down = module.lora_down.cpu()
+                if hasattr(module, 'lora_up') and hasattr(module.lora_up, 'weight'):
+                    if module.lora_up.weight.device.type == 'cuda':
+                        module.lora_up = module.lora_up.cpu()
 
     def predict_noise(
         self,
@@ -1802,7 +1815,9 @@ class SDTrainer(BaseSDTrainProcess):
                     self.accelerator.backward(loss)
 
         return loss.detach()
-        # flush()
+        # Clean up memory to prevent leaks
+        torch.cuda.empty_cache()
+        gc.collect()
 
     def hook_train_loop(self, batch: Union[DataLoaderBatchDTO, List[DataLoaderBatchDTO]]):
         if isinstance(batch, list):
@@ -1819,6 +1834,9 @@ class SDTrainer(BaseSDTrainProcess):
                 total_loss += loss
             if len(batch_list) > 1 and self.model_config.low_vram:
                 torch.cuda.empty_cache()
+            # Clean up memory after each batch to prevent leaks
+            torch.cuda.empty_cache()
+            gc.collect()
 
 
         if not self.is_grad_accumulation_step:
